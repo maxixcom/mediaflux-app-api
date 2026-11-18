@@ -1,0 +1,8 @@
+[versions]
+graphql-java = "24.0"
+bucket4j = "8.14.0"
+
+[libraries]
+graphql-java-extended-scalars = { module = "com.graphql-java:graphql-java-extended-scalars", version.ref = "graphql-java" }
+graphql-java-extended-validation = { module = "com.graphql-java:graphql-java-extended-validation", version.ref = "graphql-java" }
+bucket4j-core = { module = "com.bucket4j:bucket4j_jdk17-core", version.ref = "bucket4j" }

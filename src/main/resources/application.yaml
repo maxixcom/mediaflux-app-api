@@ -1,3 +1,155 @@
+server:
+  port: 17091
+  # Адрес клиента за ingress — для лимита `serverInfo` по IP. RemoteIpValve берёт `X-Forwarded-For`, только если
+  # запрос пришёл от доверенного прокси (дефолт Tomcat — частные диапазоны: ingress ходит из сети кластера).
+  # Так же сделано у стримера: подделанный клиентом заголовок с интернета доверия не получает.
+  tomcat:
+    remoteip:
+      remote-ip-header: x-forwarded-for
+
 spring:
   application:
     name: app-api
+  # Виртуальные потоки (RUNTIME_CONCURRENCY.md): по режиму работы app-api похож на стример — много устройств,
+  # частые короткие запросы. Включены только в паре с предохранителями ниже: маленький пул с коротким
+  # ожиданием соединения и DbGate (семафор). Значение задаётся ЗДЕСЬ, а не переменной окружения: проверено,
+  # что переопределение через env на этот флаг не срабатывает.
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: jdbc:postgresql://localhost:5432/mediaflux
+    # Своя роль с правами только на нужные таблицы и `statement_timeout` на роли (schema/postgres-init/
+    # 003-app-api-db.sh в mediaflux-deploy). Локально её заводит `make app-api-db` в mediaflux-env.
+    username: app_api
+    password: app_api
+    hikari:
+      pool-name: app-api
+      # Закон Литтла: при среднем запросе ~5 мс десяти соединений хватает на ~2000 запросов в секунду на копию,
+      # а кэш снимает с БД большую часть чтений. Потолок — гарантия для основной базы, кэш — оптимизация.
+      maximum-pool-size: 10
+      minimum-idle: 2
+      # Единицы секунд вместо 30 по умолчанию: тысячи виртуальных потоков не должны висеть в очереди пула —
+      # лучше быстрый отказ «сервер занят», чем лавина ожиданий.
+      connection-timeout: 2000
+  jpa:
+    open-in-view: false
+    hibernate:
+      # Частичные сущности сверяются со схемой: переименованная колонка роняет старт, а не первый запрос.
+      ddl-auto: validate
+    show-sql: ${MEDIAFLUX_SHOW_SQL:false}
+  graphql:
+    http:
+      path: /graphql
+    schema:
+      # Схема описана в репозитории и в mediaflux-docs, клиент собирается по ней. Интроспекция на стендах не
+      # нужна и только облегчает перебор. Включается профилем dev.
+      introspection:
+        enabled: ${MEDIAFLUX_GRAPHQL_INTROSPECTION:false}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # issuer — публичное имя Keycloak (сверка `iss`), ключи — по внутреннему адресу. На стенде оба задаются
+          # конфигом: issuer в оверлее, JWKS — в base (адрес внутри кластера одинаков на любом стенде).
+          issuer-uri: http://localhost:29080/realms/mediaflux
+          jwk-set-uri: http://localhost:29080/realms/mediaflux/protocol/openid-connect/certs
+
+management:
+  # ДЕФОЛТ = ПРОД: телеметрия выключена, как во всех сервисах (см. console/application.yaml).
+  tracing:
+    enabled: ${MEDIAFLUX_TRACING_ENABLED:false}
+    export:
+      otlp:
+        enabled: ${MEDIAFLUX_TRACING_ENABLED:false}
+    sampling:
+      probability: ${MEDIAFLUX_TRACING_SAMPLING:0.05}
+  logging:
+    export:
+      otlp:
+        enabled: ${MEDIAFLUX_OTLP_LOGS_ENABLED:false}
+  otlp:
+    metrics:
+      export:
+        enabled: ${MEDIAFLUX_OTLP_METRICS_ENABLED:false}
+        url: ${MEDIAFLUX_OTLP_METRICS_URL:http://localhost:4318/v1/metrics}
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: ${MEDIAFLUX_OTLP_TRACES_ENDPOINT:http://localhost:4317}
+          transport: grpc
+    logging:
+      export:
+        otlp:
+          endpoint: ${MEDIAFLUX_OTLP_LOGS_ENDPOINT:http://localhost:4317}
+          transport: grpc
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+jdbc:
+  datasource-proxy:
+    enabled: ${MEDIAFLUX_TRACE_JDBC:false}
+
+logging:
+  level:
+    ru.mediaflux.app.api: ${MEDIAFLUX_LOG_LEVEL:INFO}
+
+mediaflux:
+  app-api:
+    # Сведения о сервере (`GET /server-info`, APPS.md §5.1): по ним приложение узнаёт остальное.
+    stand: ${MEDIAFLUX_STAND_NAME:local}
+    production: ${MEDIAFLUX_STAND_PRODUCTION:false}
+    # Публичный адрес самого app-api: из него приложение строит адрес GraphQL.
+    public-url: ${MEDIAFLUX_APP_API_PUBLIC_URL:http://localhost:17091}
+    # Публичный issuer Keycloak для приложения — тот же, что сверяется в токене.
+    issuer: ${spring.security.oauth2.resourceserver.jwt.issuer-uri}
+    # Клиенты Keycloak по платформам (APPS.md §14 п.7). Токен другого клиента (`azp`) не принимается.
+    clients:
+      tvos: mediaflux-app-tvos
+    # Минимальная версия приложения по платформам: ниже — «версия приложения не подходит этому серверу».
+    min-app-version:
+      tvos: 0.0.1
+    # Запасной публичный адрес стримера. Источник истины — настройка `stream/public_base_url` (её правит
+    # админка CDN), как у кабинета; пустая настройка — берём этот.
+    streamer-public-url: ${MEDIAFLUX_STREAMER_PUBLIC_URL:http://localhost:17086}
+    devices:
+      # Э1: лимит устройств — настройка сервиса, жёсткий режим. Флаг тарифа и DEVICE_COUNT — в Э4 (MF-91).
+      limit: 3
+      # «Последний заход» пишем не чаще, чем раз в этот интервал на устройство.
+      last-seen-write-interval: 5m
+    db-gate:
+      # Одновременных обращений к БД на копию: вдвое больше пула, остальные ждут не дольше wait.
+      permits: 20
+      wait: 1s
+    graphql:
+      # open — любые операции (отладочные сборки, пока нет клиента); registered — только операции из
+      # манифестов `classpath:operations/*.json` (APPS.md §10).
+      operations: ${MEDIAFLUX_GRAPHQL_OPERATIONS:open}
+      max-depth: 10
+      max-complexity: 500
+    rate-limits:
+      # Листание: на пользователя.
+      browse-per-second: 10
+      browse-burst: 30
+      # «Начать просмотр»: на пользователя.
+      playback-per-minute: 30
+      # Регистрация устройства: на пользователя.
+      register-per-hour: 5
+      # Сведения о сервере: на адрес клиента, без входа.
+      server-info-per-minute: 10
+  keycloak-admin:
+    # Отзыв устройства, второй шаг: удаление офлайн-сессии по `sid` (APPS.md §6). Ходим по внутреннему адресу:
+    # на стендах `/admin` публичного имени закрыт белым списком. Пустой секрет — шаг пропускается с WARN.
+    base-url: http://localhost:29080
+    realm: mediaflux
+    client-id: mediaflux-app-api
+    client-secret: ${MEDIAFLUX_KEYCLOAK_ADMIN_CLIENT_SECRET:}
+  data-service:
+    url: http://localhost:17083/graphql
+  # Владельческий токен стрима (STREAM_AUTHORIZATION.md §3.1). Секрет ОБЩИЙ со стримером и console.
+  stream-token:
+    secret: ${MEDIAFLUX_STREAM_TOKEN_SECRET:dev-only-stream-token-secret-change-me-32b+}
+    owner-ttl-seconds: 43200

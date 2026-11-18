@@ -1,0 +1,48 @@
+# API наших приложений (APPS.md §10). Первый клиент — Apple TV.
+#
+# Ошибки — по общему контракту (ERROR_HANDLING.md): `extensions.code` + `extensions.params`, фразу собирает
+# приложение. Коды app-api — в ErrorCodes.kt и в реестре ERROR_HANDLING.md.
+
+directive @Range(min : Int = 0, max : Int = 2147483647, message : String = "graphql.validation.Range.message") on ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION
+directive @Size(min : Int = 0, max : Int = 2147483647, message : String = "graphql.validation.Size.message") on ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION
+directive @PositiveOrZero(message : String = "graphql.validation.PositiveOrZero.message") on ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION
+directive @NotBlank(message : String = "graphql.validation.NotBlank.message") on ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION
+
+scalar DateTime @specifiedBy(url: "https://scalars.graphql.org/andimarek/date-time.html")
+scalar UUID @specifiedBy(url: "https://tools.ietf.org/html/rfc4122")
+scalar Long @specifiedBy(url: "https://the-guild.dev/graphql/scalars/docs/scalars/long")
+
+type Query {
+    "Кто вошёл и с какого устройства. Доступно до регистрации устройства."
+    me: Me!
+}
+
+type Mutation
+
+"""
+Пагинация — постраничная, как в кабинете. Размер страницы ограничен, сортировку выбирает сервер: у каждого
+списка она одна и понятная (новые сверху, порядок плейлиста).
+"""
+input PageInput {
+    page: Int = 0 @PositiveOrZero
+    size: Int = 20 @Range(min: 1, max: 100)
+}
+
+type Me {
+    id: ID!
+    name: String
+    email: String
+    "Сколько устройств можно подключить."
+    deviceLimit: Int!
+    "Устройство, с которого пришёл запрос; null — ещё не зарегистрировано (или отключено)."
+    device: Device
+    "Почему отдача владельца закрыта; null — открыта (или data-service не ответил — тогда решит стример)."
+    deliveryBlock: DeliveryBlockReason
+}
+
+enum DeliveryBlockReason {
+    "Минус на балансе."
+    SUSPENDED
+    "Исчерпан лимит трафика тарифа за цикл."
+    TRAFFIC_LIMIT
+}

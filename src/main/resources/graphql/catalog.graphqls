@@ -1,0 +1,90 @@
+# Каталог (APPS.md §3–§4): только своё и только активное. Проект — «библиотека», медиа — фильм или ролик,
+# плейлист — подборка, канал — «телеканал». Видно медиа, у которого есть готовое видео; выключенное
+# пользователем и закрытое модерацией не показывается вовсе.
+#
+# Картинки, превью и потоки идут мимо app-api — в ответах только их адреса.
+
+extend type Query {
+    "Главный экран: недавно добавленные, полка на библиотеку, каналы. «Продолжить просмотр» — в Э2."
+    home: Home!
+    libraries(page: PageInput): LibraryConnection!
+    library(id: ID!): Library
+    media(id: ID!): Media
+    playlists(page: PageInput): PlaylistConnection!
+    playlist(id: ID!): Playlist
+    "Каналы владельца. Пусто, если каналы закрыты тарифом."
+    channels: [Channel!]!
+    "Поиск по названию своих медиа."
+    search(text: String! @Size(min: 2, max: 100), page: PageInput): MediaConnection!
+}
+
+type Home {
+    recent: [Media!]!
+    shelves: [Shelf!]!
+    channels: [Channel!]!
+}
+
+type Shelf {
+    library: Library!
+    items: [Media!]!
+}
+
+type Library {
+    id: ID!
+    title: String!
+    description: String
+    itemCount: Int!
+    "Обложка самого свежего медиа библиотеки."
+    coverUrl: String
+    "Медиа библиотеки, новые сверху."
+    items(page: PageInput): MediaConnection!
+}
+
+type LibraryConnection {
+    nodes: [Library!]!
+    totalCount: Int!
+}
+
+type Media {
+    id: ID!
+    code: String!
+    title: String!
+    description: String
+    durationMs: Long
+    createdAt: DateTime!
+    libraryId: ID!
+    coverUrl: String
+    "Манифест превью-спрайтов: кадры для перемотки и картинки глав."
+    previewManifestUrl: String
+}
+
+type MediaConnection {
+    nodes: [Media!]!
+    totalCount: Int!
+}
+
+type Playlist {
+    id: ID!
+    code: String!
+    title: String!
+    description: String
+    itemCount: Int!
+    "Обложка первого элемента."
+    coverUrl: String
+    "Элементы в порядке плейлиста."
+    items: [Media!]!
+}
+
+type PlaylistConnection {
+    nodes: [Playlist!]!
+    totalCount: Int!
+}
+
+type Channel {
+    id: ID!
+    code: String!
+    title: String!
+    description: String
+    "Канал сейчас вещает: запущен, не остановлен, программа не пуста."
+    onAir: Boolean!
+}

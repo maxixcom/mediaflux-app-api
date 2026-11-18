@@ -1,0 +1,7 @@
+{
+  "format": "apollo-persisted-query-manifest",
+  "version": 1,
+  "operations": [
+    { "id": "ignored-we-hash-body-ourselves", "name": "Me", "type": "query", "body": "query Me { me { id } }" }
+  ]
+}

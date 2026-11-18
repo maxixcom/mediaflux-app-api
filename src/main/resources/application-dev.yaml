@@ -1,0 +1,50 @@
+# Профиль разработки (`SPRING_PROFILES_ACTIVE=dev`, в IDEA — «Active profiles: dev»): включает то, что в
+# application.yaml намеренно выключено. Телеметрия — в otel-lgtm из mediaflux-env.
+spring:
+  jpa:
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+  graphql:
+    schema:
+      introspection:
+        enabled: true
+    graphiql:
+      enabled: true
+
+management:
+  tracing:
+    enabled: true
+    export:
+      otlp:
+        enabled: true
+    sampling:
+      probability: 1.0
+  logging:
+    export:
+      otlp:
+        enabled: true
+  otlp:
+    metrics:
+      export:
+        enabled: true
+  endpoints:
+    web:
+      exposure:
+        # Метрики Hikari и кэшей, дамп потоков — то, по чему принимаются виртуальные потоки.
+        include: "*"
+
+jdbc:
+  datasource-proxy:
+    enabled: true
+
+logging:
+  level:
+    ru.mediaflux.app.api: DEBUG
+
+mediaflux:
+  keycloak-admin:
+    # DEV-ONLY секрет служебного клиента mediaflux-app-api в локальном Keycloak — тот же передаётся скрипту
+    # `mediaflux-deploy/keycloak/app-clients.sh` (docker exec -e APP_API_KC_CLIENT_SECRET=...). На стендах — из секрета.
+    client-secret: ${MEDIAFLUX_KEYCLOAK_ADMIN_CLIENT_SECRET:devOnlyAppApiKcSecret2026}

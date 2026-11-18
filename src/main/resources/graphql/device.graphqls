@@ -1,0 +1,48 @@
+# Устройства (APPS.md §6). Устройство — это установка приложения, а не вход: повторный вход с той же
+# установки слот не тратит. На каждом запросе устройство определяется по `sid` токена (сессия Keycloak).
+#
+# Без зарегистрированного устройства доступны только `me`, `devices`, `deviceRegister`, `deviceRevoke`:
+# упёршийся в лимит отключает лишнее прямо в приложении. Остальное — DEVICE_NOT_REGISTERED.
+
+extend type Query {
+    "Подключённые устройства пользователя (отключённые не показываются)."
+    devices: [Device!]!
+}
+
+extend type Mutation {
+    """
+    Подключить устройство. Повтор для той же установки обновляет запись и слот не тратит.
+    Ошибки: DEVICE_LIMIT_REACHED {limit}; DEVICE_REVOKED — это устройство отключено, нужен новый вход.
+    """
+    deviceRegister(input: DeviceRegisterInput!): Device!
+    deviceRename(id: ID!, name: String! @NotBlank @Size(max: 100)): Device!
+    """
+    Отключить устройство (в том числе текущее — «Выйти»). Новые токены оно больше не получит, а уже выданные
+    перестают приниматься в пределах минуты.
+    """
+    deviceRevoke(id: ID!): Boolean!
+}
+
+input DeviceRegisterInput {
+    "Постоянный идентификатор установки: приложение хранит его в Keychain и не стирает при выходе."
+    installationId: UUID!
+    "Имя для списка устройств, например «Гостиная»."
+    name: String! @NotBlank @Size(max: 100)
+    platform: Platform!
+    appVersion: String! @NotBlank @Size(max: 32)
+}
+
+enum Platform {
+    TVOS
+}
+
+type Device {
+    id: ID!
+    name: String!
+    platform: Platform!
+    appVersion: String
+    lastSeenAt: DateTime
+    createdAt: DateTime!
+    "Это устройство, с которого пришёл запрос."
+    current: Boolean!
+}

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Как во всех сервисах: stdout в стандартном формате Spring Boot плюс аппендер OpenTelemetry. Доставку в
+  коллектор включает `management.logging.export.otlp.enabled` (в dev — да, в Kubernetes — нет: там логи
+  забирает агент со stdout).
+-->
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+    <appender name="OTEL" class="io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender">
+        <captureMdcAttributes>*</captureMdcAttributes>
+        <captureLoggerContext>true</captureLoggerContext>
+        <captureExperimentalAttributes>false</captureExperimentalAttributes>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="OTEL"/>
+    </root>
+</configuration>

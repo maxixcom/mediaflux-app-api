@@ -1,0 +1,34 @@
+# «Начать просмотр» (APPS.md §8): владельческий токен стрима выдаётся один раз на сеанс отдельной операцией,
+# а не полем карточки — иначе каждый перезапрос карточки менял бы адрес и перезапускал плеер.
+
+extend type Mutation {
+    """
+    Адрес потока для своего медиа или канала. Ровно одно из полей входа.
+    Ошибки: NOT_FOUND; CHANNEL_OFF_AIR; CHANNELS_NOT_IN_TARIFF; DELIVERY_BLOCKED {reason}.
+    """
+    playbackStart(input: PlaybackStartInput!): Playback!
+}
+
+input PlaybackStartInput {
+    mediaId: ID
+    channelId: ID
+}
+
+type Playback {
+    "Мастер-плейлист HLS (fMP4) с токеном в пути."
+    url: String!
+    "До какого времени действует токен в адресе; позже — снова playbackStart."
+    expiresAt: DateTime!
+    title: String!
+    "Длительность медиа; у канала — null."
+    durationMs: Long
+    "Главы медиа (если включены владельцем)."
+    chapters: [Chapter!]!
+    coverUrl: String
+    previewManifestUrl: String
+}
+
+type Chapter {
+    startMs: Long!
+    title: String!
+}
