@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+### MF-90: манифест операций клиента Apple TV 0.3.0 (2026-11-18)
+
+#### Добавлено
+
+- `operations/tvos-0.3.0.json` — 18 операций клиента DodocastTV (Apollo iOS 2.5, `apollo-persisted-query-manifest`).
+  Проверено локально в режиме `registered`: операции клиента проходят, чужой запрос — `OPERATION_NOT_REGISTERED`;
+  с `Accept: application/graphql-response+json` (так шлёт Apollo 2) отказ приходит HTTP 400 — по GraphQL over HTTP.
+  На tst остаётся режим `open` до подготовки выпуска MVP.
+
 ### MF-89: состояние зрителя, Э2 (2026-11-18)
 
 #### Добавлено
