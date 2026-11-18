@@ -10,6 +10,7 @@ import ru.mediaflux.app.api.security.CurrentPrincipal
 import ru.mediaflux.app.api.support.error.AppErrorType
 import ru.mediaflux.app.api.support.error.AppException
 import ru.mediaflux.app.api.support.error.ErrorCodes
+import ru.mediaflux.app.api.viewer.ProgressService
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 
@@ -25,6 +26,8 @@ data class PlaybackView(
     val chapters: List<ChapterView>,
     val coverUrl: String?,
     val previewManifestUrl: String?,
+    /** С какой позиции продолжить (MF-89); null — с начала. */
+    val resumePositionMs: Long? = null,
 )
 
 /**
@@ -40,6 +43,7 @@ class PlaybackController(
     private val queries: CatalogQueries,
     private val minter: StreamTokenMinter,
     private val delivery: DeliveryBlockClient,
+    private val progress: ProgressService,
 ) {
 
     @MutationMapping
@@ -68,6 +72,7 @@ class PlaybackController(
             chapters = chapters,
             coverUrl = catalog.coverUrl(card),
             previewManifestUrl = catalog.previewManifestUrl(card),
+            resumePositionMs = progress.resumePosition(userId, card.id),
         )
     }
 

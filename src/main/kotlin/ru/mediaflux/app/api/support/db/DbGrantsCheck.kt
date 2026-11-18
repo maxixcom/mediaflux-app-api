@@ -24,8 +24,8 @@ class DbGrantsCheck(private val jdbc: JdbcClient) : ApplicationRunner {
     override fun run(args: ApplicationArguments) {
         val missing = buildList {
             READ_TABLES.forEach { if (!has("has_table_privilege(current_user, :t, 'SELECT')", it)) add("SELECT $it") }
-            WRITE_TABLES.forEach {
-                if (!has("has_table_privilege(current_user, :t, 'SELECT, INSERT, UPDATE')", it)) add("SELECT/INSERT/UPDATE $it")
+            WRITE_TABLES.forEach { (table, privileges) ->
+                if (!has("has_table_privilege(current_user, :t, '$privileges')", table)) add("$privileges $table")
             }
             SEQUENCES.forEach { if (!has("has_sequence_privilege(current_user, :t, 'USAGE')", it)) add("USAGE $it") }
         }
@@ -36,7 +36,7 @@ class DbGrantsCheck(private val jdbc: JdbcClient) : ApplicationRunner {
                     "schema/postgres-init/003-app-api-db.sh",
             )
         }
-        log.info("Права роли БД на месте: {} таблиц на чтение, {} на запись", READ_TABLES.size, WRITE_TABLES.size)
+        log.info("Права роли БД на месте: {} таблиц на чтение, {} на запись", READ_TABLES.size, WRITE_TABLES.map { it.first }.distinct().size)
     }
 
     private fun has(expr: String, obj: String): Boolean =
@@ -47,7 +47,13 @@ class DbGrantsCheck(private val jdbc: JdbcClient) : ApplicationRunner {
             "t_user", "t_resource_group", "t_project", "t_media", "t_media_track", "t_media_file", "t_media_chapter",
             "t_playlist", "t_playlist_item", "t_channel", "t_channel_program_version", "t_channel_item", "t_setting",
         )
-        val WRITE_TABLES = listOf("t_app_device")
-        val SEQUENCES = listOf("seq_app_device_id")
+        /** Свои таблицы и нужные на них права. `has_table_privilege` с несколькими правами — «хотя бы одно», поэтому
+         *  проверяем каждое отдельно (`privileges` разворачивается ниже). */
+        val WRITE_TABLES = listOf(
+            "t_app_device" to "SELECT, INSERT, UPDATE",
+            "t_app_watch_progress" to "SELECT, INSERT, UPDATE",
+            "t_app_favorite" to "SELECT, INSERT, DELETE",
+        ).flatMap { (t, p) -> p.split(", ").map { t to it } }
+        val SEQUENCES = listOf("seq_app_device_id", "seq_app_watch_progress_id", "seq_app_favorite_id")
     }
 }

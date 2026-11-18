@@ -53,7 +53,10 @@ class OperationGuard(
             ?: RootFields.of(document, request.operationName)?.also { parsed.put(key, it) }
             ?: return chain.next(request)
 
-        limiter.tryConsume(kindOf(roots), principal.user.id.toString())?.let { retryAfter ->
+        val kind = kindOf(roots)
+        // Позиция — на устройство (APPS.md §10: «не чаще раза в 5 секунд с устройства»), остальное — на пользователя.
+        val limitKey = if (kind == RateLimiter.Kind.PROGRESS) "sid:${principal.sid}" else principal.user.id.toString()
+        limiter.tryConsume(kind, limitKey)?.let { retryAfter ->
             return reject(
                 request,
                 AppException(AppErrorType.RATE_LIMITED, ErrorCodes.RATE_LIMITED, "Лимит ${kindOf(roots)} для ${principal.user.id}", mapOf("retryAfterSeconds" to retryAfter)),
@@ -82,6 +85,7 @@ class OperationGuard(
     private fun kindOf(roots: RootFields): RateLimiter.Kind = when {
         roots.mutation && "playbackStart" in roots.fields -> RateLimiter.Kind.PLAYBACK
         roots.mutation && "deviceRegister" in roots.fields -> RateLimiter.Kind.REGISTER
+        roots.mutation && "progressReport" in roots.fields -> RateLimiter.Kind.PROGRESS
         else -> RateLimiter.Kind.BROWSE
     }
 

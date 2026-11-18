@@ -1,13 +1,11 @@
 package ru.mediaflux.app.api
 
-import graphql.scalars.ExtendedScalars
 import graphql.schema.idl.RuntimeWiring
 import graphql.schema.idl.SchemaGenerator
 import graphql.schema.idl.SchemaParser
 import graphql.schema.idl.TypeDefinitionRegistry
-import graphql.validation.rules.ValidationRules
-import graphql.validation.schemawiring.ValidationSchemaWiring
 import org.junit.jupiter.api.Test
+import ru.mediaflux.app.api.config.GraphQlConfig
 import org.junit.jupiter.api.assertDoesNotThrow
 import java.nio.file.Files
 import java.nio.file.Path
@@ -30,16 +28,16 @@ class GraphQlSchemaTest {
         files.forEach { file ->
             registry.merge(assertDoesNotThrow({ "не разобрался ${file.fileName}" }) { SchemaParser().parse(file.toFile()) })
         }
-        val wiring = RuntimeWiring.newRuntimeWiring()
-            .directiveWiring(ValidationSchemaWiring(ValidationRules.newValidationRules().build()))
-            .scalar(ExtendedScalars.GraphQLLong)
-            .scalar(ExtendedScalars.DateTime)
-            .scalar(ExtendedScalars.UUID)
-            .build()
+        // Та же проводка, что в сервисе (скаляры, директивы, распознавание типов объединения).
+        val builder = RuntimeWiring.newRuntimeWiring()
+        GraphQlConfig().runtimeWiringConfigurer().configure(builder)
+        val wiring = builder.build()
         val schema = SchemaGenerator().makeExecutableSchema(registry, wiring)
-        listOf("me", "devices", "home", "libraries", "library", "media", "playlists", "playlist", "channels", "search")
+        listOf("me", "devices", "home", "libraries", "library", "media", "playlists", "playlist", "channels", "search",
+            "continueWatching", "favorites")
             .forEach { assertTrue(schema.queryType.getFieldDefinition(it) != null, "нет Query.$it") }
-        listOf("deviceRegister", "deviceRename", "deviceRevoke", "playbackStart")
+        listOf("deviceRegister", "deviceRename", "deviceRevoke", "playbackStart",
+            "progressReport", "markWatched", "favoriteAdd", "favoriteRemove")
             .forEach { assertTrue(schema.mutationType.getFieldDefinition(it) != null, "нет Mutation.$it") }
     }
 }

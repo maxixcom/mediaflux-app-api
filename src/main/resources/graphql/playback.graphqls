@@ -26,6 +26,8 @@ type Playback {
     chapters: [Chapter!]!
     coverUrl: String
     previewManifestUrl: String
+    "С какой позиции продолжить (начато и не досмотрено); null — с начала. У канала всегда null."
+    resumePositionMs: Long
 }
 
 type Chapter {

@@ -56,4 +56,13 @@ class GuardPartsTest {
         assertTrue(retry >= 1)
         assertNull(limiter.tryConsume(RateLimiter.Kind.BROWSE, "u2"), "корзины у пользователей свои")
     }
+
+    @Test
+    fun `позиция — всплеск 3 на устройство, потом не чаще раза в 5 с`() {
+        val limiter = RateLimiter(AppApiProperties())
+        repeat(3) { assertNull(limiter.tryConsume(RateLimiter.Kind.PROGRESS, "sid:tv-1")) }
+        val retry = assertNotNull(limiter.tryConsume(RateLimiter.Kind.PROGRESS, "sid:tv-1"))
+        assertTrue(retry in 1..5)
+        assertNull(limiter.tryConsume(RateLimiter.Kind.PROGRESS, "sid:tv-2"), "у другого устройства своя корзина")
+    }
 }

@@ -1,0 +1,74 @@
+# Состояние зрителя (APPS.md §7, MF-89): позиция, «просмотрено», «Продолжить просмотр», избранное. Единственное, что
+# приложение пишет кроме устройств. Позиция общая для всех устройств пользователя.
+
+extend type Query {
+    "Начатое и не досмотренное (позиция от 30 с), новые сверху. Только видимое."
+    continueWatching(page: PageInput): MediaConnection!
+    "Избранное в порядке добавления, новые сверху. Скрытое (выключено, модерация, не готово) не показывается."
+    favorites(page: PageInput): FavoriteConnection!
+}
+
+extend type Mutation {
+    """
+    Позиция просмотра. Слать раз в 10–15 с во время игры, при паузе и выходе из плеера — сразу с `final: true`.
+    Перед сменой сервера — дослать накопленное. Не чаще раза в 5 с с устройства (всплеск до 3) — иначе RATE_LIMITED.
+    Между устройствами побеждает поздний отчёт по `reportedAt`.
+    """
+    progressReport(input: ProgressReportInput!): Boolean!
+    "Отметить просмотренным (или снять отметку — тогда позиция сбрасывается на начало)."
+    markWatched(mediaId: ID!, watched: Boolean = true): MediaProgress!
+    "Добавить в избранное: ровно одно из полей цели. Повтор ничего не меняет."
+    favoriteAdd(target: FavoriteTargetInput!): Boolean!
+    favoriteRemove(target: FavoriteTargetInput!): Boolean!
+}
+
+input ProgressReportInput {
+    mediaId: ID!
+    positionMs: Long!
+    "Длительность по плееру — нужна, только если сервер её не знает."
+    durationMs: Long
+    "Когда позиция снята, по часам устройства."
+    reportedAt: DateTime!
+    "Пауза или выход из плеера: записать сразу."
+    final: Boolean = false
+}
+
+input FavoriteTargetInput {
+    mediaId: ID
+    playlistId: ID
+    channelId: ID
+}
+
+type MediaProgress {
+    positionMs: Long!
+    durationMs: Long
+    "Досмотрено (с 95 %) или отмечено вручную."
+    watched: Boolean!
+    updatedAt: DateTime!
+}
+
+union FavoriteItem = Media | Playlist | Channel
+
+type FavoriteConnection {
+    nodes: [FavoriteItem!]!
+    totalCount: Int!
+}
+
+extend type Media {
+    "Позиция просмотра; null — не начинал."
+    progress: MediaProgress
+    favorite: Boolean!
+}
+
+extend type Playlist {
+    favorite: Boolean!
+}
+
+extend type Channel {
+    favorite: Boolean!
+}
+
+extend type Home {
+    continueWatching: [Media!]!
+    favorites: [FavoriteItem!]!
+}

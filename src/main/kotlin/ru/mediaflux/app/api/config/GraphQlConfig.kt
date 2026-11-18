@@ -3,6 +3,10 @@ package ru.mediaflux.app.api.config
 import graphql.analysis.MaxQueryComplexityInstrumentation
 import graphql.analysis.MaxQueryDepthInstrumentation
 import graphql.scalars.ExtendedScalars
+import graphql.schema.idl.TypeRuntimeWiring
+import ru.mediaflux.app.api.catalog.ChannelView
+import ru.mediaflux.app.api.catalog.MediaView
+import ru.mediaflux.app.api.catalog.PlaylistView
 import graphql.validation.rules.ValidationRules
 import graphql.validation.schemawiring.ValidationSchemaWiring
 import org.springframework.context.annotation.Bean
@@ -23,6 +27,19 @@ class GraphQlConfig {
                 .scalar(ExtendedScalars.GraphQLLong)
                 .scalar(ExtendedScalars.DateTime)
                 .scalar(ExtendedScalars.UUID)
+                // Элемент избранного (MF-89): тип по классу представления. Имена классов (`MediaView`) не совпадают
+                // с типами схемы (`Media`), поэтому сопоставляем явно.
+                .type(
+                    TypeRuntimeWiring.newTypeWiring("FavoriteItem").typeResolver { env ->
+                        val type = when (env.getObject<Any>()) {
+                            is MediaView -> "Media"
+                            is PlaylistView -> "Playlist"
+                            is ChannelView -> "Channel"
+                            else -> error("Неизвестный элемент избранного: ${env.getObject<Any>()::class.simpleName}")
+                        }
+                        env.schema.getObjectType(type)
+                    },
+                )
         }
     }
 

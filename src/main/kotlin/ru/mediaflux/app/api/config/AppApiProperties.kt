@@ -18,7 +18,18 @@ data class AppApiProperties(
     val dbGate: DbGateProps = DbGateProps(),
     val graphql: GraphQl = GraphQl(),
     val rateLimits: RateLimits = RateLimits(),
+    val viewer: Viewer = Viewer(),
 ) {
+    /** Состояние зрителя (MF-89, APPS.md §7). */
+    data class Viewer(
+        /** Как часто буфер позиций сбрасывается в базу. Пауза и выход из плеера пишутся сразу. */
+        val flushInterval: Duration = Duration.ofSeconds(30),
+        /** С какой доли длительности медиа считается просмотренным (решение 18.11.2026 — 95 %). */
+        val watchedThreshold: Double = 0.95,
+        /** С какой позиции медиа попадает в «Продолжить просмотр» и получает `resumePositionMs`. */
+        val continueMinPosition: Duration = Duration.ofSeconds(30),
+    )
+
     data class Devices(
         val limit: Int = 3,
         val lastSeenWriteInterval: Duration = Duration.ofMinutes(5),
@@ -43,6 +54,9 @@ data class AppApiProperties(
         val playbackPerMinute: Long = 30,
         val registerPerHour: Long = 5,
         val serverInfoPerMinute: Long = 10,
+        /** Позиция с устройства: не чаще раза в [progressPeriod], всплеск [progressBurst] (пауза, выход, перемотка). */
+        val progressBurst: Long = 3,
+        val progressPeriod: Duration = Duration.ofSeconds(5),
     )
 
     /** Все наши клиенты Keycloak — сверка `azp`. */

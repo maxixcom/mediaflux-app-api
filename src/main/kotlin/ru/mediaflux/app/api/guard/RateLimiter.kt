@@ -15,7 +15,7 @@ import kotlin.math.ceil
 @Component
 class RateLimiter(private val props: AppApiProperties) {
 
-    enum class Kind { BROWSE, PLAYBACK, REGISTER, SERVER_INFO }
+    enum class Kind { BROWSE, PLAYBACK, REGISTER, SERVER_INFO, PROGRESS }
 
     private val buckets = Caffeine.newBuilder()
         .maximumSize(500_000)
@@ -37,6 +37,7 @@ class RateLimiter(private val props: AppApiProperties) {
             Kind.PLAYBACK -> bandwidth(r.playbackPerMinute, r.playbackPerMinute, Duration.ofMinutes(1))
             Kind.REGISTER -> bandwidth(r.registerPerHour, r.registerPerHour, Duration.ofHours(1))
             Kind.SERVER_INFO -> bandwidth(r.serverInfoPerMinute, r.serverInfoPerMinute, Duration.ofMinutes(1))
+            Kind.PROGRESS -> bandwidth(r.progressBurst, 1, r.progressPeriod)
         }
         return Bucket.builder().addLimit(limit).build()
     }
