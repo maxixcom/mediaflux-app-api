@@ -56,6 +56,7 @@ data class ChannelView(
     val title: String,
     val description: String?,
     val onAir: Boolean,
+    val coverUrl: String?,
 )
 
 /** Главный экран; поля собираются по запросу (`@SchemaMapping`), чтобы не грузить то, что клиент не спросил. */
@@ -64,5 +65,3 @@ data class HomeView(val userId: Long)
 data class ShelfView(val library: LibraryView, val items: List<MediaView>)
 
 fun LocalDateTime.utc(): OffsetDateTime = atOffset(ZoneOffset.UTC)
-
-fun ChannelCard.view() = ChannelView(id.toString(), code, title, description, onAir)

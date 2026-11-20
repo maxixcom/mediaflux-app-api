@@ -2,6 +2,7 @@ package ru.mediaflux.app.api.guard
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver
 import org.springframework.stereotype.Component
 import tools.jackson.databind.json.JsonMapper
@@ -16,7 +17,10 @@ import java.security.MessageDigest
  * Манифестов несколько: старые версии приложения в магазине обновляются не сразу, их операции должны работать.
  */
 @Component
-class OperationManifest(mapper: JsonMapper) {
+class OperationManifest internal constructor(mapper: JsonMapper, location: String) {
+
+    @Autowired
+    constructor(mapper: JsonMapper) : this(mapper, LOCATION)
 
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -27,7 +31,7 @@ class OperationManifest(mapper: JsonMapper) {
     private data class Operation(val name: String? = null, val body: String = "")
 
     private val hashes: Set<String> = PathMatchingResourcePatternResolver()
-        .getResources("classpath*:operations/*.json")
+        .getResources(location)
         .flatMap { res ->
             val file = res.inputStream.use { mapper.readValue(it, ManifestFile::class.java) }
             log.info("Манифест операций {}: {} операций", res.filename, file.operations.size)
@@ -40,6 +44,9 @@ class OperationManifest(mapper: JsonMapper) {
     val size: Int get() = hashes.size
 
     companion object {
+        /** Манифесты клиентов в сборке сервиса. Тест подставляет свой каталог: число настоящих манифестов растёт. */
+        const val LOCATION = "classpath*:operations/*.json"
+
         fun sha256(text: String): String =
             MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
     }

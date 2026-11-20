@@ -12,6 +12,8 @@ import kotlin.test.assertTrue
 
 class GuardPartsTest {
 
+    private val mapper = JsonMapper.builder().addModule(KotlinModule.Builder().build()).build()
+
     @Test
     fun `корневые поля собираются и из фрагментов, служебные отбрасываются`() {
         val doc = """
@@ -41,11 +43,16 @@ class GuardPartsTest {
 
     @Test
     fun `манифест принимает только операции, чей текст в нём`() {
-        val manifest = OperationManifest(JsonMapper.builder().addModule(KotlinModule.Builder().build()).build())
-        // src/test/resources/operations/test-manifest.json
+        // src/test/resources/test-operations/test-manifest.json — не в operations/, где лежат настоящие манифесты.
+        val manifest = OperationManifest(mapper, "classpath*:test-operations/*.json")
         assertEquals(1, manifest.size)
         assertTrue(manifest.contains("query Me { me { id } }"))
         assertFalse(manifest.contains("query Me { me { id email } }"))
+    }
+
+    @Test
+    fun `настоящие манифесты клиентов читаются`() {
+        assertTrue(OperationManifest(mapper).size > 0, "в src/main/resources/operations нет ни одной операции")
     }
 
     @Test

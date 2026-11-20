@@ -39,6 +39,13 @@ object CatalogJpql {
 
     /** Плейлист показывается: свой, `ACTIVE`, не закрыт модерацией. Псевдоним `pl`. */
     const val PLAYLIST_VISIBLE = "pl.userId = :uid and pl.status = 'ACTIVE' and pl.moderationStatus = 'OK'"
+
+    /** У медиа есть готовая обложка — то же условие, что у отпечатков (`MediaFileRepository.fingerprints`). Псевдоним `m`. */
+    const val HAS_COVER = """
+        exists (
+          select 1 from MediaFileEntity f
+          where f.mediaId = m.id and f.role = 'COVER' and f.status = 'READY' and f.deleted = false)
+    """
 }
 
 // ── Проекции ──────────────────────────────────────────────────────────────────────────────────────
@@ -106,6 +113,12 @@ interface VersionItemCountRow {
 interface ChapterRow {
     val startMs: Long
     val title: String
+}
+
+/** Кандидат в обложку: владелец (версия программы канала или плейлист) и медиа с обложкой. */
+interface CoverCandidateRow {
+    val ownerId: Long
+    val mediaId: Long
 }
 
 // ── Репозитории (только чтение: `Repository`, а не `JpaRepository` — методов записи у них нет) ─────
@@ -232,6 +245,22 @@ interface PlaylistRepository : Repository<PlaylistEntity, Long> {
         """,
     )
     fun cards(@Param("uid") userId: Long, @Param("ids") ids: Collection<Long>): List<PlaylistCardRow>
+
+    /**
+     * Кандидаты в обложку плейлистов [playlistIds]: видимые элементы с обложкой в порядке плейлиста. Первый на плейлист
+     * выбирает `CatalogQueries.firstPerKey` — как кабинет (`PlaylistType.coverMediaCode`: первый элемент с обложкой).
+     */
+    @Query(
+        """
+        select i.playlistId as ownerId, m.id as mediaId from PlaylistItemEntity i
+        join PlaylistEntity pl on pl.id = i.playlistId
+        join MediaEntity m on m.id = i.mediaId
+        where i.playlistId in :plids and ${CatalogJpql.PLAYLIST_VISIBLE} and ${CatalogJpql.PLAYABLE}
+          and ${CatalogJpql.HAS_COVER}
+        order by i.playlistId, i.sortOrder, i.id
+        """,
+    )
+    fun coverCandidates(@Param("uid") userId: Long, @Param("plids") playlistIds: Collection<Long>): List<CoverCandidateRow>
 }
 
 interface ChannelRepository : Repository<ChannelEntity, Long> {
@@ -270,6 +299,21 @@ interface ChannelItemRepository : Repository<ChannelItemEntity, Long> {
         """,
     )
     fun counts(@Param("vids") versionIds: Collection<Long>): List<VersionItemCountRow>
+
+    /**
+     * Кандидаты в обложку каналов: элементы версий [versionIds], чьё медиа видно в каталоге и у которого есть обложка,
+     * в порядке программы. Своей обложки у канала нет — первый на версию (`CatalogQueries.firstPerKey`), как в кабинете
+     * (`ChannelType.coverMediaCode`). Отличие одно: медиа, скрытое из каталога, обложкой канала не станет.
+     */
+    @Query(
+        """
+        select ci.versionId as ownerId, m.id as mediaId from ChannelItemEntity ci
+        join MediaEntity m on m.id = ci.mediaId
+        where ci.versionId in :vids and ${CatalogJpql.PLAYABLE} and ${CatalogJpql.HAS_COVER}
+        order by ci.versionId, ci.sortOrder, ci.id
+        """,
+    )
+    fun coverCandidates(@Param("uid") userId: Long, @Param("vids") versionIds: Collection<Long>): List<CoverCandidateRow>
 }
 
 interface SettingRepository : Repository<SettingEntity, Long> {

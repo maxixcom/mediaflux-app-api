@@ -42,7 +42,7 @@ class FavoriteServiceTest {
 
     private fun media(id: Long) = MediaView(id.toString(), "c$id", "М$id", null, null, OffsetDateTime.now(), "1", null, null)
     private fun playlist(id: Long) = PlaylistView(id.toString(), "p$id", "П$id", null, 1, null)
-    private fun channel(id: Long) = ChannelView(id.toString(), "k$id", "К$id", null, false)
+    private fun channel(id: Long) = ChannelView(id.toString(), "k$id", "К$id", null, false, null)
     private fun fav(type: FavoriteTargetType, id: Long, minutesAgo: Long) =
         AppFavoriteEntity(userId = 1, targetType = type.name, targetId = id, createdAt = LocalDateTime.now().minusMinutes(minutesAgo))
 

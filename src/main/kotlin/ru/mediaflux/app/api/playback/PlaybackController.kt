@@ -92,7 +92,8 @@ class PlaybackController(
             title = channel.title,
             durationMs = null,
             chapters = emptyList(),
-            coverUrl = null,
+            // Обложка канала — та же, что на плитке (MF-115): вкладка «Инфо» плеера не пустая.
+            coverUrl = catalog.coverUrl(channel.coverMediaId?.let { catalog.media(userId, listOf(it)).firstOrNull() }),
             previewManifestUrl = null,
         )
     }

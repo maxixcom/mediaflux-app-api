@@ -35,22 +35,41 @@ class CatalogAssembler(private val catalog: CatalogService) {
         }
     }
 
-    /** Плейлисты, в которых есть что смотреть, с числом элементов и обложкой первого. */
+    /** Плейлисты, в которых есть что смотреть, с числом элементов и обложкой первого элемента, у которого она есть. */
     fun playlistViews(uid: Long, ids: List<Long>): List<PlaylistView> {
         val items = ids.associateWith { catalog.playlistItemIds(uid, it) }.filterValues { it.isNotEmpty() }
         val cards = catalog.playlists(uid, ids.filter { it in items })
-        val covers = catalog.media(uid, items.values.mapNotNull { it.firstOrNull() }).associateBy { it.id }
+        val covers = coverCards(uid, cards.mapNotNull { it.coverMediaId })
         return cards.map { pl ->
-            val plItems = items[pl.id].orEmpty()
-            PlaylistView(pl.id.toString(), pl.code, pl.title, pl.description, plItems.size, catalog.coverUrl(plItems.firstOrNull()?.let { covers[it] }))
+            PlaylistView(
+                pl.id.toString(), pl.code, pl.title, pl.description, items[pl.id].orEmpty().size,
+                catalog.coverUrl(pl.coverMediaId?.let { covers[it] }),
+            )
         }
     }
 
-    /** Каналы владельца, если они открыты тарифом; [ids] — только эти, в их порядке. */
+    /**
+     * Каналы владельца, если они открыты тарифом; [ids] — только эти, в их порядке. Обложка — первого ролика текущей
+     * программы, у которого она есть: своей у канала нет (MF-115).
+     */
     fun channelViews(user: AppUser, ids: List<Long>? = null): List<ChannelView> {
         val all = catalog.channels(user.id, user.channelsEnabled)
-        if (ids == null) return all.map { it.view() }
-        val byId = all.associateBy { it.id }
-        return ids.mapNotNull { byId[it]?.view() }
+        val picked = if (ids == null) {
+            all
+        } else {
+            val byId = all.associateBy { it.id }
+            ids.mapNotNull { byId[it] }
+        }
+        val covers = coverCards(user.id, picked.mapNotNull { it.coverMediaId })
+        return picked.map { c ->
+            ChannelView(
+                c.id.toString(), c.code, c.title, c.description, c.onAir,
+                catalog.coverUrl(c.coverMediaId?.let { covers[it] }),
+            )
+        }
     }
+
+    /** Карточки медиа-обложек одной пачкой (через кэш карточек): из них адрес с отпечатком `?v=`. */
+    private fun coverCards(uid: Long, mediaIds: List<Long>): Map<Long, MediaCard> =
+        catalog.media(uid, mediaIds.distinct()).associateBy { it.id }
 }

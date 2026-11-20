@@ -23,4 +23,11 @@ class ChannelItemEntity(
 
     @Column(name = "version_id")
     var versionId: Long = 0,
+
+    /** Ролик программы — для обложки канала (MF-115). */
+    @Column(name = "media_id")
+    var mediaId: Long = 0,
+
+    @Column(name = "sort_order")
+    var sortOrder: Int = 0,
 )

@@ -6,6 +6,7 @@ import ru.mediaflux.app.api.repository.ChannelItemRepository
 import ru.mediaflux.app.api.repository.ChannelProgramVersionRepository
 import ru.mediaflux.app.api.repository.ChannelRepository
 import ru.mediaflux.app.api.repository.ChannelRow
+import ru.mediaflux.app.api.repository.CoverCandidateRow
 import ru.mediaflux.app.api.repository.MediaChapterRepository
 import ru.mediaflux.app.api.repository.MediaFileRepository
 import ru.mediaflux.app.api.repository.MediaRepository
@@ -34,9 +35,18 @@ data class MediaCard(
 
 data class LibraryCard(val id: Long, val title: String, val description: String?)
 
-data class PlaylistCard(val id: Long, val code: String, val title: String, val description: String?)
+/** [coverMediaId] — медиа, чья обложка представляет плейлист: первый элемент с обложкой (MF-115). */
+data class PlaylistCard(val id: Long, val code: String, val title: String, val description: String?, val coverMediaId: Long?)
 
-data class ChannelCard(val id: Long, val code: String, val title: String, val description: String?, val onAir: Boolean)
+/** [coverMediaId] — своей обложки у канала нет: первый ролик текущей программы с обложкой (MF-115). */
+data class ChannelCard(
+    val id: Long,
+    val code: String,
+    val title: String,
+    val description: String?,
+    val onAir: Boolean,
+    val coverMediaId: Long?,
+)
 
 data class Chapter(val startMs: Long, val title: String)
 
@@ -44,8 +54,9 @@ data class Chapter(val startMs: Long, val title: String)
  * Чтение каталога (APPS.md §3) поверх репозиториев: правило видимости — `CatalogJpql.PLAYABLE`. Все обращения к БД —
  * через [DbGate].
  *
- * N+1 нет нигде: пачка карточек — один запрос на карточки и один на отпечатки картинок; каналы — один запрос на
- * каналы, один на версии программ всех каналов и один на число элементов во всех текущих версиях.
+ * N+1 нет нигде: пачка карточек — один запрос на карточки и один на отпечатки картинок (у плейлистов — на кандидатов в
+ * обложку); каналы — один запрос на каналы, один на версии программ всех каналов, один на число элементов и один на
+ * кандидатов в обложку во всех текущих версиях.
  */
 @Component
 class CatalogQueries(
@@ -97,7 +108,12 @@ class CatalogQueries(
 
     fun playlistCards(userId: Long, ids: Collection<Long>): Map<Long, PlaylistCard> {
         if (ids.isEmpty()) return emptyMap()
-        return dbGate.run { playlists.cards(userId, ids).associate { it.id to PlaylistCard(it.id, it.code, it.title, it.description) } }
+        return dbGate.run {
+            val rows = playlists.cards(userId, ids)
+            if (rows.isEmpty()) return@run emptyMap()
+            val covers = firstPerKey(playlists.coverCandidates(userId, rows.map { it.id }))
+            rows.associate { it.id to PlaylistCard(it.id, it.code, it.title, it.description, covers[it.id]) }
+        }
     }
 
     /**
@@ -109,10 +125,17 @@ class CatalogQueries(
         if (rows.isEmpty()) return@run emptyList()
         val current = versions.versions(rows.map { it.id }).groupBy { it.channelId }
             .mapValues { (_, list) -> currentVersion(list, now) }
-        val counts = channelItems.counts(current.values.mapNotNull { it?.id }).associate { it.versionId to it.itemCount }
+        val versionIds = current.values.mapNotNull { it?.id }
+        val counts = channelItems.counts(versionIds).associate { it.versionId to it.itemCount }
+        val covers = if (versionIds.isEmpty()) emptyMap() else firstPerKey(channelItems.coverCandidates(userId, versionIds))
         rows.map { c ->
-            val items = current[c.id]?.let { counts[it.id] } ?: 0L
-            ChannelCard(c.id, c.code, c.title, c.description, onAir = started(c, now) && items > 0)
+            val version = current[c.id]
+            val items = version?.let { counts[it.id] } ?: 0L
+            ChannelCard(
+                c.id, c.code, c.title, c.description,
+                onAir = started(c, now) && items > 0,
+                coverMediaId = version?.let { covers[it.id] },
+            )
         }
     }
 
@@ -129,6 +152,16 @@ class CatalogQueries(
         private const val ROLE_PREVIEW_MANIFEST = "PREVIEW_MANIFEST"
 
         fun nowUtc(): LocalDateTime = LocalDateTime.now(ZoneOffset.UTC)
+
+        /**
+         * Обложка — первый кандидат на владельца (версию программы, плейлист). Строки приходят в порядке показа
+         * внутри владельца, так что первый встреченный и есть первый элемент с обложкой.
+         */
+        fun firstPerKey(rows: List<CoverCandidateRow>): Map<Long, Long> {
+            val first = LinkedHashMap<Long, Long>()
+            for (r in rows) first.putIfAbsent(r.ownerId, r.mediaId)
+            return first
+        }
 
         private fun started(c: ChannelRow, now: LocalDateTime): Boolean {
             val startedAt = c.startedAt ?: return false
