@@ -18,7 +18,7 @@ import ru.mediaflux.app.api.catalog.MediaView
 import ru.mediaflux.app.api.catalog.PlaylistView
 import ru.mediaflux.app.api.config.AppApiProperties
 import ru.mediaflux.app.api.entity.AppFavoriteEntity
-import ru.mediaflux.app.api.entity.FavoriteTargetType
+import ru.mediaflux.app.api.entity.CatalogTargetType
 import ru.mediaflux.app.api.repository.AppFavoriteRepository
 import ru.mediaflux.app.api.support.db.DbGate
 import ru.mediaflux.app.api.support.error.AppException
@@ -43,14 +43,14 @@ class FavoriteServiceTest {
     private fun media(id: Long) = MediaView(id.toString(), "c$id", "М$id", null, null, OffsetDateTime.now(), "1", null, null)
     private fun playlist(id: Long) = PlaylistView(id.toString(), "p$id", "П$id", null, 1, null)
     private fun channel(id: Long) = ChannelView(id.toString(), "k$id", "К$id", null, false, null)
-    private fun fav(type: FavoriteTargetType, id: Long, minutesAgo: Long) =
+    private fun fav(type: CatalogTargetType, id: Long, minutesAgo: Long) =
         AppFavoriteEntity(userId = 1, targetType = type.name, targetId = id, createdAt = LocalDateTime.now().minusMinutes(minutesAgo))
 
     @Test
     fun `в порядке добавления, скрытое выпадает, по пачке на вид`() {
         whenever(repo.findByUserIdOrderByCreatedAtDescIdDesc(1)).thenReturn(listOf(
-            fav(FavoriteTargetType.CHANNEL, 7, 1), fav(FavoriteTargetType.MEDIA, 3, 2),
-            fav(FavoriteTargetType.PLAYLIST, 5, 3), fav(FavoriteTargetType.MEDIA, 4, 4),
+            fav(CatalogTargetType.CHANNEL, 7, 1), fav(CatalogTargetType.MEDIA, 3, 2),
+            fav(CatalogTargetType.PLAYLIST, 5, 3), fav(CatalogTargetType.MEDIA, 4, 4),
         ))
         whenever(views.mediaViews(eq(1L), eq(listOf(3L, 4L)))).thenReturn(listOf(media(3))) // 4 скрыто
         whenever(views.playlistViews(eq(1L), eq(listOf(5L)))).thenReturn(listOf(playlist(5)))
@@ -65,11 +65,11 @@ class FavoriteServiceTest {
     @Test
     fun `добавить можно только своё и видимое, убрать — всегда`() {
         whenever(catalog.media(eq(1L), eq(listOf(9L)))).thenReturn(emptyList())
-        val ex = runCatching { service.add(user, FavoriteTarget(FavoriteTargetType.MEDIA, 9)) }.exceptionOrNull()
+        val ex = runCatching { service.add(user, FavoriteTarget(CatalogTargetType.MEDIA, 9)) }.exceptionOrNull()
         assertTrue(ex is AppException && ex.code == "NOT_FOUND")
         verify(repo, never()).add(any(), any(), any(), any())
 
-        service.remove(user, FavoriteTarget(FavoriteTargetType.MEDIA, 9))
+        service.remove(user, FavoriteTarget(CatalogTargetType.MEDIA, 9))
         verify(repo).remove(1, "MEDIA", 9)
     }
 }

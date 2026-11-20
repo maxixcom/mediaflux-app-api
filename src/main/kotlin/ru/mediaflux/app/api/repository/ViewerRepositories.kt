@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 import ru.mediaflux.app.api.entity.AppFavoriteEntity
+import ru.mediaflux.app.api.entity.AppSearchRecentEntity
 import ru.mediaflux.app.api.entity.AppWatchProgressEntity
 import java.time.LocalDateTime
 
@@ -116,4 +117,40 @@ interface AppFavoriteRepository : JpaRepository<AppFavoriteEntity, Long> {
     /** Что из [targetIds] в избранном — для поля `favorite` пачкой. */
     @Query("select f.targetId from AppFavoriteEntity f where f.userId = :userId and f.targetType = :type and f.targetId in :ids")
     fun favoriteIds(@Param("userId") userId: Long, @Param("type") type: String, @Param("ids") targetIds: Collection<Long>): List<Long>
+}
+
+interface AppSearchRecentRepository : JpaRepository<AppSearchRecentEntity, Long> {
+
+    /** Выбор из поиска: новая строка или подъём наверх, если цель уже в истории. Две приставки сразу — не конфликт. */
+    @Modifying
+    @Query(
+        nativeQuery = true,
+        value = """
+        insert into t_app_search_recent (user_id, target_type, target_id, selected_at)
+        values (:userId, :type, :targetId, cast(:now as timestamp))
+        on conflict (user_id, target_type, target_id) do update set selected_at = excluded.selected_at
+        """,
+    )
+    fun touch(@Param("userId") userId: Long, @Param("type") type: String, @Param("targetId") targetId: Long, @Param("now") now: LocalDateTime): Int
+
+    /** Оставить [keep] свежих, остальное удалить — история не растёт. */
+    @Modifying
+    @Query(
+        nativeQuery = true,
+        value = """
+        delete from t_app_search_recent
+        where user_id = :userId and id not in (
+            select id from t_app_search_recent where user_id = :userId
+            order by selected_at desc, id desc
+            limit :keep)
+        """,
+    )
+    fun trim(@Param("userId") userId: Long, @Param("keep") keep: Int): Int
+
+    /** История пользователя, свежие первыми. Строк — не больше 20. */
+    fun findByUserIdOrderBySelectedAtDescIdDesc(userId: Long): List<AppSearchRecentEntity>
+
+    @Modifying
+    @Query("delete from AppSearchRecentEntity r where r.userId = :userId")
+    fun clear(@Param("userId") userId: Long): Int
 }

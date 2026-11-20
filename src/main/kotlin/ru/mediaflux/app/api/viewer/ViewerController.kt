@@ -17,7 +17,7 @@ import ru.mediaflux.app.api.catalog.PlaylistView
 import ru.mediaflux.app.api.catalog.page
 import ru.mediaflux.app.api.catalog.utc
 import ru.mediaflux.app.api.device.DeviceState
-import ru.mediaflux.app.api.entity.FavoriteTargetType
+import ru.mediaflux.app.api.entity.CatalogTargetType
 import ru.mediaflux.app.api.guard.OperationGuard
 import ru.mediaflux.app.api.security.CurrentPrincipal
 import ru.mediaflux.app.api.support.error.AppErrorType
@@ -39,13 +39,15 @@ data class FavoriteTargetInput(val mediaId: Long? = null, val playlistId: Long? 
 data class MediaProgressView(val positionMs: Long, val durationMs: Long?, val watched: Boolean, val updatedAt: OffsetDateTime)
 
 /**
- * Состояние зрителя (viewer.graphqls, MF-89): позиция, «просмотрено», «Продолжить просмотр», избранное. Поля
+ * Состояние зрителя (viewer.graphqls, MF-89, MF-114): позиция, «просмотрено», «Продолжить просмотр», избранное,
+ * недавние поиски. Поля
  * `progress` и `favorite` у карточек — `@BatchMapping`: одна выборка на весь список, без N+1.
  */
 @Controller
 class ViewerController(
     private val progress: ProgressService,
     private val favorites: FavoriteService,
+    private val searchRecents: SearchRecentService,
     private val views: CatalogAssembler,
 ) {
 
@@ -88,6 +90,21 @@ class ViewerController(
         return true
     }
 
+    @QueryMapping
+    fun searchRecents(): List<MediaView> = searchRecents.items(CurrentPrincipal.get().user)
+
+    @MutationMapping
+    fun searchRecentAdd(@Argument mediaId: Long): Boolean {
+        searchRecents.add(CurrentPrincipal.get().user, mediaId)
+        return true
+    }
+
+    @MutationMapping
+    fun searchRecentsClear(): Boolean {
+        searchRecents.clear(CurrentPrincipal.get().user)
+        return true
+    }
+
     // ── Ряды главного экрана ─────────────────────────────────────────────────────────────────────
 
     @SchemaMapping(typeName = "Home", field = "continueWatching")
@@ -108,17 +125,17 @@ class ViewerController(
 
     @BatchMapping(typeName = "Media", field = "favorite")
     fun mediaFavorite(media: List<MediaView>): Map<MediaView, Boolean> =
-        flags(FavoriteTargetType.MEDIA, media) { it.id }
+        flags(CatalogTargetType.MEDIA, media) { it.id }
 
     @BatchMapping(typeName = "Playlist", field = "favorite")
     fun playlistFavorite(playlists: List<PlaylistView>): Map<PlaylistView, Boolean> =
-        flags(FavoriteTargetType.PLAYLIST, playlists) { it.id }
+        flags(CatalogTargetType.PLAYLIST, playlists) { it.id }
 
     @BatchMapping(typeName = "Channel", field = "favorite")
     fun channelFavorite(channels: List<ChannelView>): Map<ChannelView, Boolean> =
-        flags(FavoriteTargetType.CHANNEL, channels) { it.id }
+        flags(CatalogTargetType.CHANNEL, channels) { it.id }
 
-    private fun <T> flags(type: FavoriteTargetType, items: List<T>, id: (T) -> String): Map<T, Boolean> {
+    private fun <T> flags(type: CatalogTargetType, items: List<T>, id: (T) -> String): Map<T, Boolean> {
         val fav = favorites.favoriteIds(CurrentPrincipal.get().user.id, type, items.map { id(it).toLong() })
         return items.associateWith { id(it).toLong() in fav }
     }
@@ -127,9 +144,9 @@ class ViewerController(
 
     private fun FavoriteTargetInput.toTarget(): FavoriteTarget {
         val set = listOfNotNull(
-            mediaId?.let { FavoriteTarget(FavoriteTargetType.MEDIA, it) },
-            playlistId?.let { FavoriteTarget(FavoriteTargetType.PLAYLIST, it) },
-            channelId?.let { FavoriteTarget(FavoriteTargetType.CHANNEL, it) },
+            mediaId?.let { FavoriteTarget(CatalogTargetType.MEDIA, it) },
+            playlistId?.let { FavoriteTarget(CatalogTargetType.PLAYLIST, it) },
+            channelId?.let { FavoriteTarget(CatalogTargetType.CHANNEL, it) },
         )
         return set.singleOrNull()
             ?: throw AppException(AppErrorType.BAD_INPUT, ErrorCodes.BAD_INPUT, "Нужно ровно одно из mediaId, playlistId, channelId")

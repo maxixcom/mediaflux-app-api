@@ -9,9 +9,6 @@ import jakarta.persistence.SequenceGenerator
 import jakarta.persistence.Table
 import java.time.LocalDateTime
 
-/** Цель избранного. Хранится строкой: новые виды целей не ломают чтение. */
-enum class FavoriteTargetType { MEDIA, PLAYLIST, CHANNEL }
-
 /**
  * Избранное (MF-89, APPS.md §7): медиа, плейлисты и каналы одной таблицей. Внешнего ключа на цель нет — скрытое и
  * удалённое отсеивает правило видимости каталога, запись остаётся.

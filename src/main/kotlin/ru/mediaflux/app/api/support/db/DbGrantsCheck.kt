@@ -53,7 +53,8 @@ class DbGrantsCheck(private val jdbc: JdbcClient) : ApplicationRunner {
             "t_app_device" to "SELECT, INSERT, UPDATE",
             "t_app_watch_progress" to "SELECT, INSERT, UPDATE",
             "t_app_favorite" to "SELECT, INSERT, DELETE",
+            "t_app_search_recent" to "SELECT, INSERT, UPDATE, DELETE",
         ).flatMap { (t, p) -> p.split(", ").map { t to it } }
-        val SEQUENCES = listOf("seq_app_device_id", "seq_app_watch_progress_id", "seq_app_favorite_id")
+        val SEQUENCES = listOf("seq_app_device_id", "seq_app_watch_progress_id", "seq_app_favorite_id", "seq_app_search_recent_id")
     }
 }

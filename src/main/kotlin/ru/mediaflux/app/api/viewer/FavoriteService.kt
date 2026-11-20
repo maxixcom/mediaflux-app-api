@@ -4,7 +4,7 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.support.TransactionTemplate
 import ru.mediaflux.app.api.catalog.CatalogAssembler
 import ru.mediaflux.app.api.catalog.CatalogService
-import ru.mediaflux.app.api.entity.FavoriteTargetType
+import ru.mediaflux.app.api.entity.CatalogTargetType
 import ru.mediaflux.app.api.repository.AppFavoriteRepository
 import ru.mediaflux.app.api.support.db.DbGate
 import ru.mediaflux.app.api.support.error.AppException
@@ -12,7 +12,7 @@ import ru.mediaflux.app.api.user.AppUser
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 
-data class FavoriteTarget(val type: FavoriteTargetType, val id: Long)
+data class FavoriteTarget(val type: CatalogTargetType, val id: Long)
 
 /**
  * Избранное (MF-89, APPS.md §7): медиа, плейлисты и каналы. Пишется сразу (записи редкие), без кэша: читаем базу —
@@ -42,33 +42,33 @@ class FavoriteService(
     /** Цели в порядке добавления (новые сверху); видимость — потом, пачками по видам. */
     fun targets(userId: Long): List<FavoriteTarget> = dbGate.run {
         repo.findByUserIdOrderByCreatedAtDescIdDesc(userId).mapNotNull { f ->
-            runCatching { FavoriteTargetType.valueOf(f.targetType) }.getOrNull()?.let { FavoriteTarget(it, f.targetId) }
+            runCatching { CatalogTargetType.valueOf(f.targetType) }.getOrNull()?.let { FavoriteTarget(it, f.targetId) }
         }
     }
 
     /** Видимые элементы избранного в порядке добавления: пачка на каждый вид, без N+1. */
     fun items(user: AppUser, targets: List<FavoriteTarget> = targets(user.id)): List<Any> {
         val byType = targets.groupBy({ it.type }, { it.id })
-        val media = views.mediaViews(user.id, byType[FavoriteTargetType.MEDIA].orEmpty()).associateBy { it.id }
-        val playlists = views.playlistViews(user.id, byType[FavoriteTargetType.PLAYLIST].orEmpty()).associateBy { it.id }
-        val channels = views.channelViews(user, byType[FavoriteTargetType.CHANNEL].orEmpty()).associateBy { it.id }
+        val media = views.mediaViews(user.id, byType[CatalogTargetType.MEDIA].orEmpty()).associateBy { it.id }
+        val playlists = views.playlistViews(user.id, byType[CatalogTargetType.PLAYLIST].orEmpty()).associateBy { it.id }
+        val channels = views.channelViews(user, byType[CatalogTargetType.CHANNEL].orEmpty()).associateBy { it.id }
         return targets.mapNotNull { t ->
             val key = t.id.toString()
             when (t.type) {
-                FavoriteTargetType.MEDIA -> media[key]
-                FavoriteTargetType.PLAYLIST -> playlists[key]
-                FavoriteTargetType.CHANNEL -> channels[key]
+                CatalogTargetType.MEDIA -> media[key]
+                CatalogTargetType.PLAYLIST -> playlists[key]
+                CatalogTargetType.CHANNEL -> channels[key]
             }
         }
     }
 
     /** Что из [ids] вида [type] в избранном — для поля `favorite` пачкой. */
-    fun favoriteIds(userId: Long, type: FavoriteTargetType, ids: Collection<Long>): Set<Long> =
+    fun favoriteIds(userId: Long, type: CatalogTargetType, ids: Collection<Long>): Set<Long> =
         if (ids.isEmpty()) emptySet() else dbGate.run { repo.favoriteIds(userId, type.name, ids).toSet() }
 
     private fun visible(user: AppUser, target: FavoriteTarget): Boolean = when (target.type) {
-        FavoriteTargetType.MEDIA -> catalog.media(user.id, listOf(target.id)).isNotEmpty()
-        FavoriteTargetType.PLAYLIST -> views.playlistViews(user.id, listOf(target.id)).isNotEmpty()
-        FavoriteTargetType.CHANNEL -> views.channelViews(user, listOf(target.id)).isNotEmpty()
+        CatalogTargetType.MEDIA -> catalog.media(user.id, listOf(target.id)).isNotEmpty()
+        CatalogTargetType.PLAYLIST -> views.playlistViews(user.id, listOf(target.id)).isNotEmpty()
+        CatalogTargetType.CHANNEL -> views.channelViews(user, listOf(target.id)).isNotEmpty()
     }
 }
