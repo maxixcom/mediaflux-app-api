@@ -42,6 +42,14 @@ class GuardPartsTest {
     }
 
     @Test
+    fun `приложения закрыты тарифом — можно только узнать себя и отключить устройство`() {
+        assertTrue(OperationGuard.APPS_OFF_ALLOWED.containsAll(setOf("me", "deviceRevoke")))
+        assertFalse(OperationGuard.APPS_OFF_ALLOWED.containsAll(setOf("me", "deviceRegister")))
+        assertFalse(OperationGuard.APPS_OFF_ALLOWED.containsAll(setOf("devices")))
+        assertFalse(OperationGuard.APPS_OFF_ALLOWED.containsAll(setOf("home")))
+    }
+
+    @Test
     fun `манифест принимает только операции, чей текст в нём`() {
         // src/test/resources/test-operations/test-manifest.json — не в operations/, где лежат настоящие манифесты.
         val manifest = OperationManifest(mapper, "classpath*:test-operations/*.json")

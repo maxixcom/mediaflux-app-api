@@ -32,6 +32,9 @@ object ErrorCodes {
     /** Каналы закрыты тарифом. */
     const val CHANNELS_NOT_IN_TARIFF = "CHANNELS_NOT_IN_TARIFF"
 
+    /** Приложения закрыты тарифом (флаг `appsEnabled`, MF-91): работают только `me` и `deviceRevoke`. */
+    const val APPS_NOT_IN_TARIFF = "APPS_NOT_IN_TARIFF"
+
     /** Слишком часто. Параметр: `retryAfterSeconds`. */
     const val RATE_LIMITED = "RATE_LIMITED"
 

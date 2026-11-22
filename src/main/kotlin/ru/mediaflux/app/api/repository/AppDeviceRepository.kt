@@ -31,6 +31,21 @@ interface AppDeviceRepository : JpaRepository<AppDeviceEntity, Long> {
     @Query("update AppDeviceEntity d set d.lastSeenAt = :at where d.id = :id")
     fun touch(@Param("id") id: Long, @Param("at") at: LocalDateTime): Int
 
+    /** Отключённые устройства, чья офлайн-сессия ещё не закрыта (частичный индекс `idx_app_device_session_to_close`). */
+    @Query(
+        """
+        select d from AppDeviceEntity d
+        where d.revokedAt is not null and d.sessionClosedAt is null and d.sessionId is not null
+        order by d.revokedAt
+        limit :limit
+        """,
+    )
+    fun findSessionsToClose(@Param("limit") limit: Int): List<AppDeviceEntity>
+
+    @Modifying
+    @Query("update AppDeviceEntity d set d.sessionClosedAt = :at where d.id = :id and d.sessionClosedAt is null")
+    fun markSessionClosed(@Param("id") id: Long, @Param("at") at: LocalDateTime): Int
+
     /**
      * Блокировка по пользователю на время транзакции — закрывает гонку двух регистраций (APPS.md §6). Форма с двумя int
      * — своё пространство ключей: с однокомпонентными блокировками console (`pg_advisory_xact_lock(bigint)`) не

@@ -27,6 +27,9 @@ class KeycloakAdminClient(
     @Volatile
     private var token: CachedToken? = null
 
+    /** Служебный клиент настроен: без секрета удалять сессии нечем (локально без Keycloak-клиента). */
+    val configured: Boolean get() = props.clientSecret.isNotBlank()
+
     /** `true` — сессия удалена или её уже нет; `false` — не получилось (WARN в лог, отзыв всё равно действует). */
     fun deleteOfflineSession(sid: String): Boolean {
         if (props.clientSecret.isBlank()) {

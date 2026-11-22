@@ -31,8 +31,11 @@ data class AppApiProperties(
     )
 
     data class Devices(
-        val limit: Int = 3,
         val lastSeenWriteInterval: Duration = Duration.ofMinutes(5),
+        /** Как часто досылать закрытие офлайн-сессий отозванных устройств (MF-91: отзыв из кабинета). */
+        val sessionCloseInterval: Duration = Duration.ofSeconds(30),
+        /** Сколько отозванных устройств закрывать за проход. */
+        val sessionCloseBatch: Int = 100,
     )
 
     data class DbGateProps(

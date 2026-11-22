@@ -7,6 +7,7 @@ import ru.mediaflux.app.api.config.AppApiProperties
 import ru.mediaflux.app.api.entity.AppDeviceEntity
 import ru.mediaflux.app.api.keycloak.KeycloakAdminClient
 import ru.mediaflux.app.api.repository.AppDeviceRepository
+import ru.mediaflux.app.api.repository.UserRepository
 import ru.mediaflux.app.api.security.AppPrincipal
 import ru.mediaflux.app.api.support.cache.Caches
 import ru.mediaflux.app.api.support.cache.await
@@ -29,6 +30,9 @@ data class DeviceRegistration(val installationId: UUID, val name: String, val pl
 /**
  * Устройства (APPS.md §6): регистрация с лимитом, переименование, отзыв, проверка на каждом запросе.
  *
+ * **Лимит — из тарифа** (`DEVICE_COUNT`, MF-91): нет строки или `value` NULL — без ограничения, число — потолок.
+ * Режим не смотрим: перерасхода с согласием пока нет, любое число держим жёстко.
+ *
  * **Кэш устройства по `sid` — только найденное, 60 с.** Отзыв доходит до соседней копии за минуту (принято, §9),
  * на своей копии — сразу. «Не найдено» не кэшируем: иначе после `deviceRegister` на одной копии соседняя ещё
  * минуту отвечала бы `DEVICE_NOT_REGISTERED` по старому ответу. Незарегистрированные сессии бывают только во
@@ -37,6 +41,7 @@ data class DeviceRegistration(val installationId: UUID, val name: String, val pl
 @Service
 class DeviceService(
     private val repo: AppDeviceRepository,
+    private val users: UserRepository,
     private val tx: TransactionTemplate,
     private val dbGate: DbGate,
     private val keycloak: KeycloakAdminClient,
@@ -50,7 +55,10 @@ class DeviceService(
     /** Когда последний раз писали `last_seen_at` по устройству (в памяти копии). */
     private val lastSeenWritten = ConcurrentHashMap<Long, Long>()
 
-    val limit: Int get() = props.devices.limit
+    /** Сколько устройств можно подключить по тарифу пользователя; null — без ограничения. */
+    fun limitFor(userId: Long): Int? = dbGate.run { readLimit(userId) }
+
+    private fun readLimit(userId: Long): Int? = users.findDeviceLimit(userId).firstOrNull()?.let { Math.toIntExact(it) }
 
     /** Устройство текущей сессии; null — не зарегистрировано (или сессия чужая). */
     fun current(principal: AppPrincipal): DeviceState? {
@@ -97,8 +105,9 @@ class DeviceService(
                     throw AppException(AppErrorType.FORBIDDEN, ErrorCodes.DEVICE_REVOKED, "Сессия $sid отключена")
                 }
                 if (existing == null || existing.revokedAt != null) {
+                    val limit = readLimit(userId)
                     val active = repo.countActiveExcept(userId, input.installationId)
-                    if (active >= limit) {
+                    if (limit != null && active >= limit) {
                         throw AppException(
                             AppErrorType.LIMIT, ErrorCodes.DEVICE_LIMIT_REACHED,
                             "Подключено $active из $limit устройств", mapOf("limit" to limit),
@@ -151,10 +160,44 @@ class DeviceService(
         }
         if (sid != null) {
             bySid.synchronous().invalidate(sid)
-            keycloak.deleteOfflineSession(sid)
+            if (keycloak.deleteOfflineSession(sid)) markSessionClosed(publicId, principal.user.id)
         }
         log.info("Устройство {} пользователя {} отключено", publicId, principal.user.id)
         return true
+    }
+
+    /**
+     * Досылка второго шага отзыва (MF-91): закрыть офлайн-сессии устройств, отключённых без него — из кабинета (console
+     * ставит только пометку) или когда Keycloak был недоступен. Повтор безвреден: 404 от Keycloak — успех, отметка
+     * ставится только один раз. Две копии могут закрыть одну сессию дважды — это лишний запрос, не ошибка.
+     *
+     * Заодно сбрасываем кэш устройства по `sid` на этой копии: отзыв из кабинета доходит сюда быстрее минуты.
+     * Возвращает, сколько сессий закрыто.
+     */
+    fun closePendingSessions(batch: Int): Int {
+        if (!keycloak.configured) return 0
+        val pending = dbGate.run { repo.findSessionsToClose(batch) }
+        var closed = 0
+        for (device in pending) {
+            val sid = device.sessionId ?: continue
+            bySid.synchronous().invalidate(sid)
+            if (keycloak.deleteOfflineSession(sid)) {
+                dbGate.run { tx.executeWithoutResult { repo.markSessionClosed(device.id!!, nowUtc()) } }
+                closed++
+            }
+        }
+        if (closed > 0) log.info("Закрыто офлайн-сессий отключённых устройств: {} из {}", closed, pending.size)
+        return closed
+    }
+
+    private fun markSessionClosed(publicId: UUID, userId: Long) {
+        runCatching {
+            dbGate.run {
+                tx.executeWithoutResult {
+                    repo.findByUserIdAndPublicId(userId, publicId)?.id?.let { repo.markSessionClosed(it, nowUtc()) }
+                }
+            }
+        }.onFailure { log.debug("Отметка закрытой сессии устройства {} не записана: {} — допишет досылка", publicId, it.message) }
     }
 
     private fun ownActive(principal: AppPrincipal, publicId: UUID): AppDeviceEntity =

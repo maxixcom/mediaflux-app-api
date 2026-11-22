@@ -23,7 +23,9 @@ import ru.mediaflux.app.api.support.error.ErrorMessageExceptionResolver
  *
  * 1. **Зарегистрированные операции** в режиме `registered`: неизвестный текст — `OPERATION_NOT_REGISTERED`.
  * 2. **Лимит частоты** по пользователю и классу операции: листание, «начать просмотр», регистрация устройства.
- * 3. **Устройство** по `sid` токена: без зарегистрированного разрешены только [DEVICELESS], отключённое получает
+ * 3. **Приложения в тарифе** (`appsEnabled`, MF-91): снят флаг — всё, кроме [APPS_OFF_ALLOWED], получает
+ *    `APPS_NOT_IN_TARIFF`, в том числе уже подключённые устройства. Узнать себя и отключить устройство можно.
+ * 4. **Устройство** по `sid` токена: без зарегистрированного разрешены только [DEVICELESS], отключённое получает
  *    `DEVICE_REVOKED`. Найденное устройство кладётся в контекст GraphQL ([DEVICE_KEY]) и отмечается заходом.
  *
  * Отказ отдаётся ответом GraphQL с кодом по общему контракту (`extensions.code`), у лимита — ещё и заголовок
@@ -62,6 +64,10 @@ class OperationGuard(
                 AppException(AppErrorType.RATE_LIMITED, ErrorCodes.RATE_LIMITED, "Лимит ${kindOf(roots)} для ${principal.user.id}", mapOf("retryAfterSeconds" to retryAfter)),
                 retryAfter,
             )
+        }
+
+        if (!principal.user.appsEnabled && !APPS_OFF_ALLOWED.containsAll(roots.fields)) {
+            return reject(request, AppException(AppErrorType.FORBIDDEN, ErrorCodes.APPS_NOT_IN_TARIFF, "Приложения не в тарифе пользователя ${principal.user.id}"))
         }
 
         val device = devices.current(principal)
@@ -106,5 +112,8 @@ class OperationGuard(
 
         /** Что можно без зарегистрированного устройства: узнать себя, увидеть устройства, подключиться, отключить лишнее. */
         val DEVICELESS = setOf("me", "devices", "deviceRegister", "deviceRevoke")
+
+        /** Что можно, когда приложения закрыты тарифом: узнать себя и отключить устройство (выйти). */
+        val APPS_OFF_ALLOWED = setOf("me", "deviceRevoke")
     }
 }

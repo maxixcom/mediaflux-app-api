@@ -57,6 +57,7 @@ interface UserRow {
     val email: String?
     val status: String
     val channelsEnabled: Boolean
+    val appsEnabled: Boolean
 }
 
 interface MediaCardRow {
@@ -128,12 +129,26 @@ interface UserRepository : Repository<UserEntity, Long> {
     @Query(
         """
         select u.id as id, u.externalId as externalId, coalesce(u.displayName, u.username) as name, u.email as email,
-               u.status as status, coalesce(rg.channelsEnabled, false) as channelsEnabled
+               u.status as status, coalesce(rg.channelsEnabled, false) as channelsEnabled,
+               coalesce(rg.appsEnabled, false) as appsEnabled
         from UserEntity u left join u.resourceGroup rg
         where u.externalId = :sub
         """,
     )
     fun findAppUser(@Param("sub") sub: UUID): UserRow?
+
+    /**
+     * Лимит устройств тарифа пользователя (`DEVICE_COUNT`). Пустой список — строки нет, то есть без ограничения;
+     * `value` NULL — тоже без ограничения. Режим не смотрим: перерасхода с согласием пока нет (MF-91), любое число —
+     * потолок.
+     */
+    @Query(
+        """
+        select l.value from ResourceLimitEntity l, UserEntity u
+        where u.id = :userId and l.resourceGroupId = u.resourceGroup.id and l.target = 'DEVICE_COUNT'
+        """,
+    )
+    fun findDeviceLimit(@Param("userId") userId: Long): List<Long?>
 }
 
 interface MediaRepository : Repository<MediaEntity, Long> {

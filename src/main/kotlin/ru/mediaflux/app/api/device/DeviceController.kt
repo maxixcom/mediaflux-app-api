@@ -33,7 +33,8 @@ data class MeView(
     val id: String,
     val name: String?,
     val email: String?,
-    val deviceLimit: Int,
+    /** null — без ограничения. */
+    val deviceLimit: Int?,
     val device: DeviceView?,
     val deliveryBlock: DeliveryBlockReason?,
 )
@@ -55,7 +56,7 @@ class DeviceController(
             id = principal.user.id.toString(),
             name = principal.user.name,
             email = principal.user.email,
-            deviceLimit = devices.limit,
+            deviceLimit = devices.limitFor(principal.user.id),
             device = current,
             deliveryBlock = delivery.reason(principal.user.id),
         )

@@ -23,4 +23,8 @@ class ResourceGroupEntity(
 
     @Column(name = "channels_enabled")
     var channelsEnabled: Boolean = false,
+
+    /** Приложения открыты тарифом (APPS.md §6, MF-91): снят — всё, кроме `me` и `deviceRevoke`, отказывает. */
+    @Column(name = "apps_enabled")
+    var appsEnabled: Boolean = false,
 )

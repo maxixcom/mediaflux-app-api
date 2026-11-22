@@ -5,7 +5,10 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.anyOrNull
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.never
+import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import org.springframework.transaction.PlatformTransactionManager
@@ -15,6 +18,7 @@ import ru.mediaflux.app.api.config.AppApiProperties
 import ru.mediaflux.app.api.entity.AppDeviceEntity
 import ru.mediaflux.app.api.keycloak.KeycloakAdminClient
 import ru.mediaflux.app.api.repository.AppDeviceRepository
+import ru.mediaflux.app.api.repository.UserRepository
 import ru.mediaflux.app.api.security.AppPrincipal
 import ru.mediaflux.app.api.support.cache.Caches
 import ru.mediaflux.app.api.support.db.DbGate
@@ -28,15 +32,16 @@ import kotlin.test.assertNull
 
 class DeviceServiceTest {
 
-    private val props = AppApiProperties(devices = AppApiProperties.Devices(limit = 3))
+    private val props = AppApiProperties()
     private val repo = mock<AppDeviceRepository>()
+    private val users = mock<UserRepository>().also { whenever(it.findDeviceLimit(10)).thenReturn(listOf(3L)) }
     private val keycloak = mock<KeycloakAdminClient>()
     private val txManager = mock<PlatformTransactionManager>().also {
         whenever(it.getTransaction(any())).thenReturn(SimpleTransactionStatus())
     }
     private val meters = SimpleMeterRegistry()
     private val service = DeviceService(
-        repo, TransactionTemplate(txManager), DbGate(props, meters), keycloak, Caches(meters), props,
+        repo, users, TransactionTemplate(txManager), DbGate(props, meters), keycloak, Caches(meters), props,
     )
 
     private val user = AppUser(10, UUID.randomUUID(), "Имя", null, true, true)
@@ -56,6 +61,35 @@ class DeviceServiceTest {
         assertEquals(ErrorCodes.DEVICE_LIMIT_REACHED, ex.code)
         assertEquals(3, ex.params["limit"])
         verify(repo, never()).save(any<AppDeviceEntity>())
+    }
+
+    @Test
+    fun `лимит из тарифа — 1 и одно уже подключено`() {
+        whenever(users.findDeviceLimit(10)).thenReturn(listOf(1L))
+        whenever(repo.findByUserIdAndInstallationId(10, installation)).thenReturn(null)
+        whenever(repo.countActiveExcept(10, installation)).thenReturn(1)
+        val ex = assertThrows<AppException> { service.register(principal, input) }
+        assertEquals(1, ex.params["limit"])
+    }
+
+    @Test
+    fun `тариф 0 — подключить нельзя ни одного`() {
+        whenever(users.findDeviceLimit(10)).thenReturn(listOf(0L))
+        whenever(repo.findByUserIdAndInstallationId(10, installation)).thenReturn(null)
+        whenever(repo.countActiveExcept(10, installation)).thenReturn(0)
+        val ex = assertThrows<AppException> { service.register(principal, input) }
+        assertEquals(ErrorCodes.DEVICE_LIMIT_REACHED, ex.code)
+    }
+
+    @Test
+    fun `нет строки DEVICE_COUNT или значение NULL — без ограничения`() {
+        whenever(repo.findByUserIdAndInstallationId(10, installation)).thenReturn(null)
+        whenever(repo.countActiveExcept(10, installation)).thenReturn(50)
+        whenever(users.findDeviceLimit(10)).thenReturn(emptyList())
+        assertEquals("sid-new", service.register(principal, input).sessionId)
+        whenever(users.findDeviceLimit(10)).thenReturn(listOf(null))
+        assertEquals("sid-new", service.register(principal, input).sessionId)
+        assertNull(service.limitFor(10))
     }
 
     @Test
@@ -98,8 +132,41 @@ class DeviceServiceTest {
         val publicId = UUID.randomUUID()
         val device = AppDeviceEntity(id = 3, publicId = publicId, userId = 10, installationId = installation, sessionId = "sid-tv")
         whenever(repo.findByUserIdAndPublicId(10, publicId)).thenReturn(device)
+        whenever(keycloak.deleteOfflineSession("sid-tv")).thenReturn(true)
         service.revoke(principal, publicId)
         assert(device.revokedAt != null)
         verify(keycloak).deleteOfflineSession("sid-tv")
+        verify(repo).markSessionClosed(eq(3L), any())
+    }
+
+    @Test
+    fun `сбой Keycloak при отзыве — отметки о закрытии нет, допишет досылка`() {
+        val publicId = UUID.randomUUID()
+        val device = AppDeviceEntity(id = 3, publicId = publicId, userId = 10, installationId = installation, sessionId = "sid-tv")
+        whenever(repo.findByUserIdAndPublicId(10, publicId)).thenReturn(device)
+        whenever(keycloak.deleteOfflineSession("sid-tv")).thenReturn(false)
+        service.revoke(principal, publicId)
+        verify(repo, never()).markSessionClosed(any(), any())
+    }
+
+    @Test
+    fun `досылка закрывает сессии отозванных из кабинета, неудачные оставляет на следующий проход`() {
+        val closedOk = AppDeviceEntity(id = 7, userId = 10, installationId = UUID.randomUUID(), sessionId = "sid-a", revokedAt = LocalDateTime.now())
+        val failed = AppDeviceEntity(id = 8, userId = 11, installationId = UUID.randomUUID(), sessionId = "sid-b", revokedAt = LocalDateTime.now())
+        whenever(keycloak.configured).thenReturn(true)
+        whenever(repo.findSessionsToClose(100)).thenReturn(listOf(closedOk, failed))
+        whenever(keycloak.deleteOfflineSession("sid-a")).thenReturn(true)
+        whenever(keycloak.deleteOfflineSession("sid-b")).thenReturn(false)
+        assertEquals(1, service.closePendingSessions(100))
+        verify(repo).markSessionClosed(eq(7L), any())
+        verify(repo, never()).markSessionClosed(eq(8L), any())
+    }
+
+    @Test
+    fun `без секрета служебного клиента досылка молчит`() {
+        whenever(keycloak.configured).thenReturn(false)
+        assertEquals(0, service.closePendingSessions(100))
+        verify(repo, never()).findSessionsToClose(any())
+        verify(keycloak, times(0)).deleteOfflineSession(anyOrNull())
     }
 }

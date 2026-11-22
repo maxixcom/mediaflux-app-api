@@ -53,6 +53,13 @@ class AppDeviceEntity(
     @Column(name = "revoked_at")
     var revokedAt: LocalDateTime? = null,
 
+    /**
+     * Офлайн-сессия Keycloak отключённого устройства закрыта (второй шаг отзыва). Отзыв из кабинета ставит только
+     * `revoked_at` — сессию закрывает досылка app-api ([ru.mediaflux.app.api.device.DeviceSessionCloser]).
+     */
+    @Column(name = "session_closed_at")
+    var sessionClosedAt: LocalDateTime? = null,
+
     @Column(name = "created_at", nullable = false, updatable = false)
     var createdAt: LocalDateTime = LocalDateTime.MIN,
 

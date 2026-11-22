@@ -18,6 +18,8 @@ data class AppUser(
     val active: Boolean,
     /** Каналы открыты тарифом (`t_resource_group.channels_enabled`). */
     val channelsEnabled: Boolean,
+    /** Приложения открыты тарифом (`t_resource_group.apps_enabled`, MF-91). */
+    val appsEnabled: Boolean = false,
 )
 
 /**
@@ -43,7 +45,10 @@ class UserLookup(
 
     private fun load(sub: UUID): AppUser? = dbGate.run {
         users.findAppUser(sub)?.let {
-            AppUser(it.id, it.externalId, it.name, it.email, active = it.status == "ACTIVE", channelsEnabled = it.channelsEnabled)
+            AppUser(
+                it.id, it.externalId, it.name, it.email, active = it.status == "ACTIVE",
+                channelsEnabled = it.channelsEnabled, appsEnabled = it.appsEnabled,
+            )
         }
     }
 }

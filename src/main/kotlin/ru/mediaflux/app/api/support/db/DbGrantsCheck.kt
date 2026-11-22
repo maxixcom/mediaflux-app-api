@@ -44,8 +44,9 @@ class DbGrantsCheck(private val jdbc: JdbcClient) : ApplicationRunner {
 
     companion object {
         val READ_TABLES = listOf(
-            "t_user", "t_resource_group", "t_project", "t_media", "t_media_track", "t_media_file", "t_media_chapter",
-            "t_playlist", "t_playlist_item", "t_channel", "t_channel_program_version", "t_channel_item", "t_setting",
+            "t_user", "t_resource_group", "t_resource_limit", "t_project", "t_media", "t_media_track", "t_media_file",
+            "t_media_chapter", "t_playlist", "t_playlist_item", "t_channel", "t_channel_program_version", "t_channel_item",
+            "t_setting",
         )
         /** Свои таблицы и нужные на них права. `has_table_privilege` с несколькими правами — «хотя бы одно», поэтому
          *  проверяем каждое отдельно (`privileges` разворачивается ниже). */
