@@ -122,6 +122,8 @@ class DeviceService(
                 device.appVersion = input.appVersion.trim()
                 device.sessionId = sid
                 device.revokedAt = null
+                // Отметка закрытия относится к прежней сессии; не сбросить — следующий отзыв досылка пропустит.
+                device.sessionClosedAt = null
                 device.lastSeenAt = now
                 device.updatedAt = now
                 repo.save(device)
@@ -148,19 +150,19 @@ class DeviceService(
      * второго шага пометку не отменяет.
      */
     fun revoke(principal: AppPrincipal, publicId: UUID): Boolean {
-        val sid = dbGate.run {
+        val (deviceId, sid) = dbGate.run {
             tx.execute {
                 val device = ownActive(principal, publicId)
                 val now = nowUtc()
                 device.revokedAt = now
                 device.updatedAt = now
                 repo.save(device)
-                device.sessionId
-            }
+                device.id!! to device.sessionId
+            }!!
         }
         if (sid != null) {
             bySid.synchronous().invalidate(sid)
-            if (keycloak.deleteOfflineSession(sid)) markSessionClosed(publicId, principal.user.id)
+            if (keycloak.deleteOfflineSession(sid)) markSessionClosed(deviceId, sid)
         }
         log.info("Устройство {} пользователя {} отключено", publicId, principal.user.id)
         return true
@@ -182,7 +184,7 @@ class DeviceService(
             val sid = device.sessionId ?: continue
             bySid.synchronous().invalidate(sid)
             if (keycloak.deleteOfflineSession(sid)) {
-                dbGate.run { tx.executeWithoutResult { repo.markSessionClosed(device.id!!, nowUtc()) } }
+                dbGate.run { tx.executeWithoutResult { repo.markSessionClosed(device.id!!, sid, nowUtc()) } }
                 closed++
             }
         }
@@ -190,14 +192,10 @@ class DeviceService(
         return closed
     }
 
-    private fun markSessionClosed(publicId: UUID, userId: Long) {
+    private fun markSessionClosed(deviceId: Long, sid: String) {
         runCatching {
-            dbGate.run {
-                tx.executeWithoutResult {
-                    repo.findByUserIdAndPublicId(userId, publicId)?.id?.let { repo.markSessionClosed(it, nowUtc()) }
-                }
-            }
-        }.onFailure { log.debug("Отметка закрытой сессии устройства {} не записана: {} — допишет досылка", publicId, it.message) }
+            dbGate.run { tx.executeWithoutResult { repo.markSessionClosed(deviceId, sid, nowUtc()) } }
+        }.onFailure { log.debug("Отметка закрытой сессии устройства {} не записана: {} — допишет досылка", deviceId, it.message) }
     }
 
     private fun ownActive(principal: AppPrincipal, publicId: UUID): AppDeviceEntity =

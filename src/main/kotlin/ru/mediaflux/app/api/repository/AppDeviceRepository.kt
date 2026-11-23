@@ -42,9 +42,18 @@ interface AppDeviceRepository : JpaRepository<AppDeviceEntity, Long> {
     )
     fun findSessionsToClose(@Param("limit") limit: Int): List<AppDeviceEntity>
 
+    /**
+     * Отметка «офлайн-сессия закрыта» — только для той сессии, которую закрыли: если устройство успело подключиться
+     * заново (новый `sid`), отметка легла бы на живую сессию, и следующий отзыв досылка бы пропустила.
+     */
     @Modifying
-    @Query("update AppDeviceEntity d set d.sessionClosedAt = :at where d.id = :id and d.sessionClosedAt is null")
-    fun markSessionClosed(@Param("id") id: Long, @Param("at") at: LocalDateTime): Int
+    @Query(
+        """
+        update AppDeviceEntity d set d.sessionClosedAt = :at
+        where d.id = :id and d.sessionId = :sid and d.sessionClosedAt is null
+        """,
+    )
+    fun markSessionClosed(@Param("id") id: Long, @Param("sid") sid: String, @Param("at") at: LocalDateTime): Int
 
     /**
      * Блокировка по пользователю на время транзакции — закрывает гонку двух регистраций (APPS.md §6). Форма с двумя int

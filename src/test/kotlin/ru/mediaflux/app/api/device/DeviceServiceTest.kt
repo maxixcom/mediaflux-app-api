@@ -121,6 +121,18 @@ class DeviceServiceTest {
     }
 
     @Test
+    fun `новый вход сбрасывает отметку закрытия прежней сессии — иначе следующий отзыв досылка пропустит`() {
+        val revoked = AppDeviceEntity(
+            id = 1, userId = 10, installationId = installation, sessionId = "sid-old",
+            revokedAt = LocalDateTime.now(), sessionClosedAt = LocalDateTime.now(),
+        )
+        whenever(repo.findByUserIdAndInstallationId(10, installation)).thenReturn(revoked)
+        whenever(repo.countActiveExcept(10, installation)).thenReturn(0)
+        val saved = service.register(principal, input)
+        assertNull(saved.sessionClosedAt)
+    }
+
+    @Test
     fun `чужая сессия не даёт устройство`() {
         val other = AppDeviceEntity(id = 5, userId = 99, installationId = installation, sessionId = "sid-new")
         whenever(repo.findFirstBySessionIdOrderByUpdatedAtDesc("sid-new")).thenReturn(other)
@@ -136,7 +148,7 @@ class DeviceServiceTest {
         service.revoke(principal, publicId)
         assert(device.revokedAt != null)
         verify(keycloak).deleteOfflineSession("sid-tv")
-        verify(repo).markSessionClosed(eq(3L), any())
+        verify(repo).markSessionClosed(eq(3L), eq("sid-tv"), any())
     }
 
     @Test
@@ -146,7 +158,7 @@ class DeviceServiceTest {
         whenever(repo.findByUserIdAndPublicId(10, publicId)).thenReturn(device)
         whenever(keycloak.deleteOfflineSession("sid-tv")).thenReturn(false)
         service.revoke(principal, publicId)
-        verify(repo, never()).markSessionClosed(any(), any())
+        verify(repo, never()).markSessionClosed(any(), any(), any())
     }
 
     @Test
@@ -158,8 +170,8 @@ class DeviceServiceTest {
         whenever(keycloak.deleteOfflineSession("sid-a")).thenReturn(true)
         whenever(keycloak.deleteOfflineSession("sid-b")).thenReturn(false)
         assertEquals(1, service.closePendingSessions(100))
-        verify(repo).markSessionClosed(eq(7L), any())
-        verify(repo, never()).markSessionClosed(eq(8L), any())
+        verify(repo).markSessionClosed(eq(7L), eq("sid-a"), any())
+        verify(repo, never()).markSessionClosed(eq(8L), any(), any())
     }
 
     @Test
